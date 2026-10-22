@@ -1,0 +1,26 @@
+import { mkdir, readFile, writeFile, readdir, cp, rm } from 'node:fs/promises'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const dist = path.join(root, 'dist')
+const output = path.join(root, 'artifacts')
+let html = await readFile(path.join(dist, 'index.html'), 'utf8')
+const scriptMatch = html.match(/<script\b[^>]*src="([^"]+)"[^>]*><\/script>/)
+const cssMatch = html.match(/<link\b[^>]*href="([^"]+\.css)"[^>]*>/)
+if (!scriptMatch || !cssMatch) throw new Error('无法识别构建文件，未生成预览。')
+const resolveAsset = value => path.join(dist, value.replace(/^\//, ''))
+const js = await readFile(resolveAsset(scriptMatch[1]), 'utf8')
+const css = await readFile(resolveAsset(cssMatch[1]), 'utf8')
+html = html.replace(scriptMatch[0], () => `<script type="module">${js.replace(/<\/script/gi, '<\\/script')}</script>`)
+html = html.replace(cssMatch[0], () => `<style>${css.replace(/<\/style/gi, '<\\/style')}</style>`)
+const favicon = await readFile(path.join(dist, 'favicon.svg'), 'utf8')
+html = html.replace('href="/favicon.svg"', `href="data:image/svg+xml,${encodeURIComponent(favicon)}"`)
+await mkdir(output, { recursive: true })
+await writeFile(path.join(output, 'zhumeng-crm-preview.html'), html)
+console.log('已生成独立预览：artifacts/zhumeng-crm-preview.html（直接双击，无需服务器）')
+const deploy = path.join(output, 'zhumeng-crm-dist')
+await rm(deploy, { recursive: true, force: true })
+await cp(dist, deploy, { recursive: true })
+if (!(await readdir(deploy)).includes('index.html')) throw new Error('部署目录缺少 index.html')
+console.log('已生成静态部署目录：artifacts/zhumeng-crm-dist')
